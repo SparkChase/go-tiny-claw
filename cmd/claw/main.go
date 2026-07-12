@@ -5,10 +5,17 @@ import (
     "log"
     "os"
 
+    "github.com/joho/godotenv"
+
     "github.com/SparkChase/go-tiny-claw/internal/engine"
-    "github.com/SparkChase/go-tiny-claw/internal/schema"
     "github.com/SparkChase/go-tiny-claw/internal/provider"
+    "github.com/SparkChase/go-tiny-claw/internal/schema"
 )
+
+func init() {
+    // 在 main 之前加载项目根目录的 .env 文件
+    _ = godotenv.Load(".env")
+}
 // 伪造的工具注册表 (用于测试 Provider 的工具提取能力)
 type mockRegistry struct{}
 

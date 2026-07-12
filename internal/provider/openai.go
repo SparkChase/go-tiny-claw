@@ -5,12 +5,10 @@ import (
     "context"
     "encoding/json"
     "fmt"
-    "log"
+    "net/http"
     "os"
-    "path/filepath"
-    "runtime"
+    "time"
 
-    "github.com/joho/godotenv"
     "github.com/openai/openai-go/v3"
     "github.com/openai/openai-go/v3/option"
     "github.com/openai/openai-go/v3/shared"
@@ -24,19 +22,31 @@ type OpenAIProvider struct {
 }
 
 // NewZhipuOpenAIProvider 构造函数：基于 OpenAI V3 SDK，指向智谱底座
-// API Key 优先从 .env 文件读取，若读取失败则回退到环境变量
+// API Key 和 Model 优先从 .env / 环境变量读取
 func NewZhipuOpenAIProvider(model string) *OpenAIProvider {
-    loadEnv()
-
     apiKey := os.Getenv("ZHIPU_API_KEY")
     if apiKey == "" {
-        panic("请设置 ZHIPU_API_KEY 环境变量，或在项目根目录 .env 文件中写入 ZHIPU_API_KEY=your_key")
+        panic("请设置 ZHIPU_API_KEY，方式：1) 在项目根目录 .env 中写入 ZHIPU_API_KEY=your_key  2) export ZHIPU_API_KEY=your_key")
     }
-    // 核心：将官方 SDK 的地址替换为智谱的兼容端点
+
+    // 若 .env 或环境变量中指定了 MODEL，则优先使用；否则用传入的默认值
+    if envModel := os.Getenv("MODEL"); envModel != "" {
+        model = envModel
+    }
+
     baseURL := "https://api.siliconflow.cn/v1"
 
+    // 创建带超时的 HTTP Client，防止网络不通时永久阻塞
+    httpClient := &http.Client{
+        Timeout: 60 * time.Second,
+    }
+
     return &OpenAIProvider{
-        client: openai.NewClient(option.WithAPIKey(apiKey), option.WithBaseURL(baseURL)),
+        client: openai.NewClient(
+            option.WithAPIKey(apiKey),
+            option.WithBaseURL(baseURL),
+            option.WithHTTPClient(httpClient),
+        ),
         model:  model,
     }
 }
@@ -152,31 +162,4 @@ func (p *OpenAIProvider) Generate(ctx context.Context, msgs []schema.Message, av
     }
 
     return resultMsg, nil
-}
-
-// loadEnv 加载项目根目录的 .env 文件
-// 通过查找调用栈定位项目根目录，优先加载 .env，失败时回退到环境变量
-func loadEnv() {
-    // 查找项目根目录（包含 go.mod 的目录）
-    _, filename, _, _ := runtime.Caller(0)
-    root := findProjectRoot(filepath.Dir(filename))
-
-    envPath := filepath.Join(root, ".env")
-    if err := godotenv.Load(envPath); err != nil {
-        log.Printf("[warn] 无法加载 .env 文件 (%s): %v，回退到系统环境变量", envPath, err)
-    }
-}
-
-// findProjectRoot 从给定目录向上查找包含 go.mod 的项目根目录
-func findProjectRoot(dir string) string {
-    for {
-        if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-            return dir
-        }
-        parent := filepath.Dir(dir)
-        if parent == dir {
-            return dir // 兜底：已到文件系统根
-        }
-        dir = parent
-    }
 }

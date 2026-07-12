@@ -9,7 +9,7 @@ import (
 
     "github.com/anthropics/anthropic-sdk-go"
     "github.com/anthropics/anthropic-sdk-go/option"
-    "github.com//go-tiny-claw/internal/schema"
+    "github.com/SparkChase/go-tiny-claw/internal/schema"
 )
 
 type ClaudeProvider struct {
