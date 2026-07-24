@@ -1,74 +1,50 @@
+// cmd/claw/main.go
 package main
 
 import (
-    "context"
-    "log"
-    "os"
+	"context"
+	"log"
+	"os"
 
-    "github.com/joho/godotenv"
-
-    "github.com/SparkChase/go-tiny-claw/internal/engine"
-    "github.com/SparkChase/go-tiny-claw/internal/provider"
-    "github.com/SparkChase/go-tiny-claw/internal/schema"
+	"github.com/SparkChase/go-tiny-claw/internal/engine"
+	"github.com/SparkChase/go-tiny-claw/internal/provider"
+	"github.com/SparkChase/go-tiny-claw/internal/tools"
+	"github.com/joho/godotenv"
 )
 
-func init() {
-    // 在 main 之前加载项目根目录的 .env 文件
-    _ = godotenv.Load(".env")
-}
-// 伪造的工具注册表 (用于测试 Provider 的工具提取能力)
-type mockRegistry struct{}
-
-func (m *mockRegistry) GetAvailableTools() []schema.ToolDefinition {
-    return []schema.ToolDefinition{
-        {
-            Name:        "get_weather",
-            Description: "获取指定城市的当前天气情况。",
-            InputSchema: map[string]interface{}{
-                "type": "object",
-                "properties": map[string]interface{}{
-                    "city": map[string]interface{}{
-                        "type": "string",
-                    },
-                },
-                "required": []string{"city"},
-            },
-        },
-    }
-}
-
-func (m *mockRegistry) Execute(ctx context.Context, call schema.ToolCall) schema.ToolResult {
-    log.Printf("  -> [Mock 工具执行] 获取 %s 的天气中...\n", call.Name)
-    return schema.ToolResult{
-        ToolCallID: call.ID,
-        Output:     "API 返回：今天是晴天，气温 25 度。",
-        IsError:    false,
-    }
-}
-
 func main() {
-    // 确保已设置 ZHIPU_API_KEY
-    if os.Getenv("ZHIPU_API_KEY") == "" {
-        log.Fatal("请先导出 ZHIPU_API_KEY 环境变量")
-    }
+	// 自动加载 .env 文件
+	_ = godotenv.Load()
 
-    workDir, _ := os.Getwd()
+	// 确保设置了 ZHIPU_API_KEY
+	if os.Getenv("ZHIPU_API_KEY") == "" {
+		log.Fatal("请先导出 ZHIPU_API_KEY 环境变量")
+	}
 
-    // 1. 初始化真实的 Provider大脑 (指向智谱 GLM-4.5)
-    // 这里你可以任意切换 NewZhipuClaudeProvider 或 NewZhipuOpenAIProvider，效果完全一致！
-    llmProvider := provider.NewZhipuOpenAIProvider("glm-4.5-air")
+	workDir, _ := os.Getwd()
+	model := os.Getenv("MODEL")
+	if model == "" {
+		model = "glm-4.5-air" // fallback
+	}
+	llmProvider := provider.NewZhipuOpenAIProvider(model)
+	registry := tools.NewRegistry()
 
-    // 2. 注入伪造的工具注册表
-    registry := &mockRegistry{}
+	// 挂载其他的极简工具
+	registry.Register(tools.NewWriteFileTool(workDir))
+	registry.Register(tools.NewBashTool(workDir))
+	registry.Register(tools.NewEditFileTool(workDir))
 
-    // 3. 实例化并运行引擎，开启 EnableThinking = true (开启慢思考阶段！)
-    eng := engine.NewAgentEngine(llmProvider, registry, workDir, true)
+	// 实例化引擎，开启 EnableThinking = true (开启慢思考，促使模型一次性统筹规划)
+	eng := engine.NewAgentEngine(llmProvider, registry, workDir, true)
 
-    // 设定测试任务
-    prompt := "我想去北京跑步，帮我查查天气适合吗？"
+	// 下发一个需要收集多源信息的任务
+	prompt := `
+    我当前目录下有 a.txt, b.txt, c.txt 三个文件。
+    为了节省时间，请你同时一次性读取这三个文件，并将它们的内容综合起来，告诉我它们分别记录了什么领域的信息。
+    `
 
-    err := eng.Run(context.Background(), prompt)
-    if err != nil {
-        log.Fatalf("引擎运行崩溃: %v", err)
-    }
+	err := eng.Run(context.Background(), prompt)
+	if err != nil {
+		log.Fatalf("引擎运行崩溃: %v", err)
+	}
 }
