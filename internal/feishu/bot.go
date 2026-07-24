@@ -108,7 +108,7 @@ func (r *FeishuReporter) sendMsg(text string) {
 	contentStr := string(contentBytes)
 
 	msgReq := larkim.NewCreateMessageReqBuilder().
-		ReceiveIdType(larkim.ReceiveIdTypeChatId).
+		ReceiveIdType(larkim.CreateMessageV1ReceiveIDTypeChatId).
 		Body(larkim.NewCreateMessageReqBodyBuilder().
 			ReceiveId(r.chatId).
 			MsgType(larkim.MsgTypeText).
